@@ -200,7 +200,10 @@ def section_deck(xc, num_decks):
         )
         xc.kv["status"] = hexfmt(int("0x90", 16) + i)
         xc.print(il, "control", entries)
+        # LED must follow cue_indicator (respects user's cue mode), not cue_default
+        xc.kv["key"] = "cue_indicator"
         xc.print(il, "output", entries + ["on", "off"])
+        xc.kv["key"] = "cue_default"  # restore for next iteration's control
 
     xc.kv["key"] = "start_play"
     xc.kv["midino"] = "0x48"
@@ -298,6 +301,8 @@ def section_deck(xc, num_decks):
         xc.print(il, "control", entries)
     xc.comment(il, "control", "<!-- tempo slider end -->")
 
+    # Mixxx control keys — must use Normal, not Script-Binding
+    xc.kv["options"] = "<Normal/>"
     xc.kv["midino"] = "0x10"
     xc.kv["key"] = "loop_in"
     for i in range(num_decks):
@@ -338,6 +343,8 @@ def section_deck(xc, num_decks):
         xc.kv["status"] = hexfmt(int("0x90", 16) + i)
         xc.print(il, "control", entries)
 
+    # JS functions — back to Script-Binding
+    xc.kv["options"] = "<Script-Binding/>"
     xc.kv["midino"] = "0x4C"
     xc.kv["key"] = f"{prefix}.toggleLoopAdjustIn"
     for i in range(num_decks):
@@ -348,7 +355,7 @@ def section_deck(xc, num_decks):
         xc.kv["status"] = hexfmt(int("0x90", 16) + i)
         xc.print(il, "control", entries)
 
-    xc.kv["midino"] = "0x4E"
+    xc.kv["midino"] = "0x77"  # confirmed from hardware (was 0x4E)
     xc.kv["key"] = f"{prefix}.toggleLoopAdjustOut"
     for i in range(num_decks):
         xc.kv["group"] = f"[Channel{i + 1}]"
@@ -429,7 +436,7 @@ def section_mixer(xc, num_decks):
     xc.kv["key"] = "pregain"
     for i in range(num_decks):
         xc.kv["midino"] = "0x04"
-        xc.kv["options"] = "<FourteenBitCC/>"
+        xc.kv["options"] = "<FourteenBitCC/><soft_takeover/>"
         xc.kv["group"] = f"[Channel{i + 1}]"
         xc.kv["description"] = gen_description("M3", "TRIM", i + 1, "normal")
         xc.kv["status"] = hexfmt(int("0xB0", 16) + i)

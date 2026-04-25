@@ -36,7 +36,7 @@ PioneerDDJGRV6.fxTable = [
   0.962, // Pos 12
 ];
 
-// Mapping: Hardware-Position -> Interne Mixxx-ID
+// Mapping: hardware position -> internal Mixxx effect ID
 // see fxSelectAbsolute()
 PioneerDDJGRV6.effectIdTable = [
   "org.mixxx.effects.autopan", // Pos 0:  AUTOPAN
@@ -54,13 +54,10 @@ PioneerDDJGRV6.effectIdTable = [
   "org.mixxx.effects.echo", // Pos 12: ECHO
 ];
 
-PioneerDDJGRV6.playBlinkTimers = {};
-PioneerDDJGRV6.playBlinkStates = {};
-
 // see beatSyncHandler()
 PioneerDDJGRV6.syncTimers = {};
 //
-// Globales Objekt für Loop-Timer
+// Global object for loop timers
 PioneerDDJGRV6.loopTimers = {};
 
 for (var i = 0; i < 4; i++) {
@@ -70,11 +67,11 @@ for (var i = 0; i < 4; i++) {
       data1: 0x02,
       levels: {
         off: 0x00,
-        oneGreen: 0x26, // Leuchtet 1 grünes Segment
-        twoGreens: 0x41, // Leuchtet 2 grüne Segmente
-        orangeGreen: 0x57, // 1 Orange + 2 Grüne
-        twoOranges: 0x65, // 2 Oranges + 2 Grüne
-        redFull: 0x77, // Rot + 2 Oranges + 2 Grüne (Peak)
+        oneGreen: 0x26, // 1 green segment lit
+        twoGreens: 0x41, // 2 green segments lit
+        orangeGreen: 0x57, // 1 orange + 2 green segments
+        twoOranges: 0x65, // 2 orange + 2 green segments
+        redFull: 0x77, // red + 2 orange + 2 green segments (peak)
       },
     },
     playPause: {
@@ -186,13 +183,11 @@ PioneerDDJGRV6.LightOff = function () {
     midi.sendShortMsg(0x9a, 0x00 + i, 0x00); // Deck 2 pads with SHIFT
   }
 
-  // turn off loop in and out lights
-  PioneerDDJGRV6.setLoopButtonLights(0x90, 0x00);
-  PioneerDDJGRV6.setLoopButtonLights(0x91, 0x00);
-
-  // turn off reloop lights
-  PioneerDDJGRV6.setReloopLight(0x90, 0x00);
-  PioneerDDJGRV6.setReloopLight(0x91, 0x00);
+  // turn off loop in/out and reloop lights for all 4 decks
+  for (var i = 0; i < 4; i++) {
+    PioneerDDJGRV6.setLoopButtonLights(0x90 + i, 0x00);
+    PioneerDDJGRV6.setReloopLight(0x90 + i, 0x00);
+  }
 
   // stop any flashing lights
   PioneerDDJGRV6.toggleLight(PioneerDDJGRV6.lights.beatFx, false);
@@ -249,7 +244,11 @@ PioneerDDJGRV6.init = function () {
     // Rate & LEDs
     engine.softTakeover(group, "rate", true);
     engine.makeConnection(group, "track_loaded", PioneerDDJGRV6.trackLoadedLED);
-    engine.makeConnection(group, "play", PioneerDDJGRV6.playLEDHandler);
+    engine.makeConnection(
+      group,
+      "play_indicator",
+      PioneerDDJGRV6.playLEDHandler,
+    );
     engine.makeConnection(group, "playposition", PioneerDDJGRV6.jogWheelLED);
     engine.makeConnection(group, "loop_enabled", PioneerDDJGRV6.loopToggle);
 
@@ -259,7 +258,7 @@ PioneerDDJGRV6.init = function () {
     midi.sendShortMsg(0xb0 + deckIdx, 0x0c, 0x7f); // Alt Brightness
 
     // enforce initial-Status
-    engine.trigger(group, "play");
+    engine.trigger(group, "play_indicator");
     engine.trigger(group, "playposition");
     engine.trigger(group, "cue_default");
     engine.trigger(group, "vu_meter");
@@ -303,7 +302,7 @@ PioneerDDJGRV6.init = function () {
 
   PioneerDDJGRV6.initFx();
 
-  console.log("Pioneer DDJ-GRV6: Initialisierung abgeschlossen.");
+  console.log("Pioneer DDJ-GRV6: Initialization complete.");
 };
 
 //
@@ -348,7 +347,7 @@ PioneerDDJGRV6.focusedFxGroup = function () {
     "[EffectRack1_EffectUnit1]",
     "focused_effect",
   );
-  // Falls 0 geliefert wird (kein Fokus), nehmen wir Slot 1 als Standard
+  // If 0 is returned (no focused effect), default to slot 1
   if (focusedFx < 1) {
     focusedFx = 1;
   }
@@ -359,6 +358,7 @@ PioneerDDJGRV6.focusedFxGroup = function () {
 // Loop IN/OUT ADJUST
 //
 
+// Fix #3: guard condition — "loop_enabled" === 0 must be outside the string
 PioneerDDJGRV6.toggleLoopAdjustIn = function (
   channel,
   _control,
@@ -366,7 +366,7 @@ PioneerDDJGRV6.toggleLoopAdjustIn = function (
   _status,
   group,
 ) {
-  if (value === 0 || engine.getValue(group, "loop_enabled" === 0)) {
+  if (value === 0 || engine.getValue(group, "loop_enabled") === 0) {
     return;
   }
   PioneerDDJGRV6.loopAdjustIn[channel] = !PioneerDDJGRV6.loopAdjustIn[channel];
@@ -380,7 +380,7 @@ PioneerDDJGRV6.toggleLoopAdjustOut = function (
   _status,
   group,
 ) {
-  if (value === 0 || engine.getValue(group, "loop_enabled" === 0)) {
+  if (value === 0 || engine.getValue(group, "loop_enabled") === 0) {
     return;
   }
   PioneerDDJGRV6.loopAdjustOut[channel] =
@@ -444,9 +444,8 @@ PioneerDDJGRV6.stopLoopLightsBlink = function (group, control, status) {
 };
 
 PioneerDDJGRV6.loopToggle = function (value, group, control) {
-  // TODO: 4 channels
-  const status = group === "[Channel1]" ? 0x90 : 0x91,
-    channel = group === "[Channel1]" ? 0 : 1;
+  const channel = script.deckFromGroup(group) - 1; // 0-based index
+  const status = 0x90 + channel; // MIDI status for this deck (0x90..0x93)
 
   PioneerDDJGRV6.setReloopLight(status, value ? 0x7f : 0x00);
 
@@ -461,9 +460,9 @@ PioneerDDJGRV6.loopToggle = function (value, group, control) {
 
 /**
  * TODO: finish the implementation....
- * Handler für die BEAT SYNC Taste (D19)
- * - Short Press: Beatsync (1x angleichen) oder Toggle-Off (falls Sync aktiv)
- * - Long Press: Sync Lock (Dauerhaft)
+ * Handler for the BEAT SYNC button (D19)
+ * - Short press: one-shot beat sync, or toggle off if sync lock is active
+ * - Long press: enable sync lock (permanent)
  */
 PioneerDDJGRV6.beatSyncHandler = function (
   channel,
@@ -485,7 +484,7 @@ PioneerDDJGRV6.beatSyncHandler = function (
       group +
       ") F5",
   );
-  var syncNote = 0x58; // D19 Note laut MIDI-Dokumentation
+  var syncNote = 0x58; // D19 note per MIDI documentation
 
   var deckNum = parseInt(group.substring(8, 9)) - 1;
   var ledStatus = 0x90 + deckNum;
@@ -494,16 +493,16 @@ PioneerDDJGRV6.beatSyncHandler = function (
     PioneerDDJGRV6.syncTimers[group] = engine.beginTimer(
       300,
       function () {
-        // DAS PASSIERT NACH 300ms (LONG PRESS)
+        // Executed after 300ms hold = long press
         engine.setValue(group, "sync_enabled", 1);
-        PioneerDDJGRV6.syncTimers[group] = 0; // Timer löschen
+        PioneerDDJGRV6.syncTimers[group] = 0; // clear timer reference
 
         midi.sendShortMsg(ledStatus, syncNote, 0x7f);
       },
       true,
     );
   } else {
-    // --- TASTE LOSGELASSEN ---
+    // --- Button released ---
     if (PioneerDDJGRV6.syncTimers[group]) {
       engine.stopTimer(PioneerDDJGRV6.syncTimers[group]);
       PioneerDDJGRV6.syncTimers[group] = 0;
@@ -737,7 +736,7 @@ PioneerDDJGRV6.jogWheelLED = function (value, group, control) {
 
   if (PioneerDDJGRV6.lastJogPos[deckIdx] !== ledPos) {
     midi.sendShortMsg(0x90 + deckIdx, 0x3f, ledPos);
-    PioneerDDJGRV6.lastJogPos[deckIdx] = 63; // ledPos;
+    PioneerDDJGRV6.lastJogPos[deckIdx] = ledPos;
   }
 };
 
@@ -763,42 +762,37 @@ PioneerDDJGRV6.fxSelectAbsolute = function (
       group +
       ") F5",
   );
-  // WICHTIG: Nur auf das Einrasten reagieren (127), nicht auf das Loslassen (0)
+  // Only react on button press (127), not on release (0)
   if (value !== 0x7f) return;
 
   var idx = control - 0x20;
   var effectId = PioneerDDJGRV6.effectIdTable[idx];
   if (effectId) {
-    // Wir schreiben die Pfade komplett aus - das ist am sichersten gegen Tippfehler
+    // Write all paths out in full to avoid typos
     var slot1 = "[EffectRack1_EffectUnit1_Effect1]";
     var slot2 = "[EffectRack1_EffectUnit1_Effect2]";
     var slot3 = "[EffectRack1_EffectUnit1_Effect3]";
     var unit = "[EffectRack1_EffectUnit1]";
 
-    // 1. Slots deaktivieren (setValue für Zahlen 0/1)
+    // 1. Disable other effect slots
     engine.setValue(slot2, "enabled", 0);
     engine.setValue(slot3, "enabled", 0);
 
-    // 2. Effekt laden (setParameter für Text-IDs)
+    // 2. Load effect (using string effect ID)
     //engine.setParameter(slot1, "load_effect", effectId);
     engine.setValue(slot1, "effect_selector", effectId);
 
-    // 3. Aktivierung (setValue für Zahlen)
+    // 3. Enable the slot
     engine.setValue(slot1, "enabled", 1);
     engine.setValue(slot1, "meta", 0.5);
     engine.setValue(unit, "group_[Channel1]_enable", 1);
 
     console.log(
-      "PioneerDDJGRV6.fxSelectAbsolute ERFOLG: Pos " +
-        idx +
-        " lädt: " +
-        effectId,
+      "PioneerDDJGRV6.fxSelectAbsolute OK: pos " + idx + " loads: " + effectId,
     );
   } else {
     console.log(
-      "PioneerDDJGRV6.fxSelectAbsolute: Keine ID für Index " +
-        idx +
-        " in Tabelle gefunden.",
+      "PioneerDDJGRV6.fxSelectAbsolute: no effect ID found for index " + idx,
     );
   }
 };
@@ -894,7 +888,7 @@ PioneerDDJGRV6.beatFxOnOff = function (channel, control, value, status, group) {
   );
 
   if (value > 0) {
-    // Nur beim Drücken
+    // only on button press, ignore release
     var isEnabled = engine.getValue(group, "enabled");
     var newState = isEnabled ? 0 : 1;
 
@@ -960,44 +954,12 @@ PioneerDDJGRV6.levelDepthDirect = function (
   }
 };
 
-// Funktion für den ON/OFF Button (F8)
-
-PioneerDDJGRV6.playLEDHandler = function (value, group, control) {
+// Handler for the play/pause LED.
+// Connected to play_indicator (not play) so blinking behaviour respects
+// the user's cue mode preference set in Mixxx preferences.
+PioneerDDJGRV6.playLEDHandler = function (value, group, _control) {
   var deckNum = parseInt(group.substring(8, 9)) - 1;
-  var status = 0x90 + deckNum;
-  var midino = 0x0b; // D22 Taste
-
-  if (value > 0) {
-    // --- constant on: song is playing
-    if (PioneerDDJGRV6.playBlinkTimers[group]) {
-      engine.stopTimer(PioneerDDJGRV6.playBlinkTimers[group]);
-      PioneerDDJGRV6.playBlinkTimers[group] = null;
-    }
-    midi.sendShortMsg(status, midino, 0x7f); // Dauer-An
-  } else {
-    // just blink, even when a track is loaded
-    if (engine.getValue(group, "track_loaded")) {
-      if (!PioneerDDJGRV6.playBlinkTimers[group]) {
-        PioneerDDJGRV6.playBlinkStates[group] = false;
-        PioneerDDJGRV6.playBlinkTimers[group] = engine.beginTimer(
-          500,
-          function () {
-            PioneerDDJGRV6.playBlinkStates[group] =
-              !PioneerDDJGRV6.playBlinkStates[group];
-            var ledVal = PioneerDDJGRV6.playBlinkStates[group] ? 0x7f : 0x00;
-            midi.sendShortMsg(status, midino, ledVal);
-          },
-        );
-      }
-    } else {
-      // no track loaded: LED to off
-      if (PioneerDDJGRV6.playBlinkTimers[group]) {
-        engine.stopTimer(PioneerDDJGRV6.playBlinkTimers[group]);
-        PioneerDDJGRV6.playBlinkTimers[group] = null;
-      }
-      midi.sendShortMsg(status, midino, 0x00);
-    }
-  }
+  midi.sendShortMsg(0x90 + deckNum, 0x0b, value ? 0x7f : 0x00);
 };
 
 PioneerDDJGRV6.shutdown = function () {
